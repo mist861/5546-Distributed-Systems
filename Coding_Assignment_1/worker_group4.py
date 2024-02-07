@@ -11,11 +11,11 @@ group = 'NaN'
 def load_data(group):
     global data_table
     if group == 'am':
-        with open('data-am.json') as data_json_am: #open am json
+        with open('data-complete-am.json') as data_json_am: #open am json
             data_table = json.load(data_json_am) #load am json into data_table dict
         data_json_am.close() #close am json
     elif group == 'nz':
-        with open('data-nz.json') as data_json_nz: #open nz json
+        with open('data-complete-nz.json') as data_json_nz: #open nz json
             data_table = json.load(data_json_nz) #load nz json into data_table dict
         data_json_nz.close() #close nz json
     pass
@@ -78,25 +78,25 @@ def getbyyear(location, year):
         }
 
 def registerworker(worker_name, worker_host, port, master):
-    global group #load the global group var, to track which file to use
     try:
-        group = ServerProxy(f'http://{master}/').registerworker(worker_name, worker_host, port) #call the master server, which will add the worker to the workers dict and the group array of its choosing and return the group name, which is stored in the global var
+        register = ServerProxy(f'http://{master}/').registerworker(worker_name, worker_host, port) #call the master server, which will add the worker to the workers dict and the group array of its choosing and return the group name, which is stored in the global var
     except:
         print('Unable to connect to master!') #if there is a communication error:
         sys.exit(0) #exit
-    if group != 'NaN': #If the group got updated:
-        print(f'Worker group set to: {group}') #info statement
+    if register == 'Success': #If the rpc call returned 'Success'
         print('Registered with master!') #info statment
     else:
-        print('Worker group not set!') #if, for whatever reason, the rpc call was successufl but group still wasn't updated:
+        print('Unable to register with master!') #if, for whatever reason, the rpc call was successufl but group still wasn't updated:
         sys.exit(0) #exit
     pass
 
 def main():
     if len(sys.argv) < 3:
-        print('Usage: worker.py <worker_name> <worker_hostname> <port> <master:port>')
+        print('Usage: worker.py <worker_name> <worker_hostname> <port> <master:port> <group>')
         sys.exit(0)
 
+    global group
+    group = str(sys.argv[5])
     worker_name = str(sys.argv[1]) #get the worker_name
     worker_host = 'localhost'
     worker_host = str(sys.argv[2]) #get the worker_name, if provided
