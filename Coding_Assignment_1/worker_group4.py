@@ -4,20 +4,18 @@ import sys
 import json
 
 #Storage of data
-data_table = {}
-group = 'NaN'
+data_table = {} #global dict to store the data
+group = 'NaN' #null variable to store group status, this is only needed because both workers run on the same box
 
 
 def load_data(group):
     global data_table
-    if group == 'am':
+    if group == 'am': #the only reason we even need the group, since the data files are now the same, is so that all workers can run on the same box and have separate files
         with open('data-complete-am.json') as data_json_am: #open am json
             data_table = json.load(data_json_am) #load am json into data_table dict
-        data_json_am.close() #close am json
     elif group == 'nz':
         with open('data-complete-nz.json') as data_json_nz: #open nz json
             data_table = json.load(data_json_nz) #load nz json into data_table dict
-        data_json_nz.close() #close nz json
     pass
 
 def getbyname(name):
@@ -96,12 +94,11 @@ def main():
         sys.exit(0)
 
     global group
-    group = str(sys.argv[5])
-    worker_name = str(sys.argv[1]) #get the worker_name
-    worker_host = 'localhost'
-    worker_host = str(sys.argv[2]) #get the worker_name, if provided
+    group = str(sys.argv[5]) #again, this wouldn't be needed if these workers ran on separate hosts and could have the same file name (and still have separate files)
+    worker_name = str(sys.argv[1]) #get the worker name
+    worker_host = str(sys.argv[2]) #get the worker host, this isn't strictly needed here but would be needed if different workers ran on different hosts so we're keeping it in for futureproofing
     port = int(sys.argv[3]) #get the worker port
-    master = str(sys.argv[4]) #get the master:port
+    master = str(sys.argv[4]) #get the master:port, for simplicity's sake we're having this be one arg
     registerworker(worker_name, worker_host, port, master) #register the server with the master, using the worker name and port.
     server = SimpleXMLRPCServer(("localhost", port))
 
