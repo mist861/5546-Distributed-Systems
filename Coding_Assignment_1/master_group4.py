@@ -3,7 +3,6 @@ from decimal import localcontext
 from xmlrpc.server import SimpleXMLRPCServer
 from xmlrpc.client import ServerProxy
 import sys
-import re #for performing regex matches, used to select nodes based on name
 import html #for sanitizing input
 from itertools import cycle #this will be used by the round robin cycle
 import json #needed here as we're storing the registered workers in a json
@@ -32,9 +31,9 @@ def round_robin(): #every time this is called, the global var is moved to the ne
     key, value = next(workers_iteration)
     return [key, value]
 
-def registerworker(worker_name, worker_host, port): #this lets workers register with the master instead of being static
+def registerworker(worker_name, worker): #this lets workers register with the master instead of being static
     global workers, workers_iteration #load the global vars
-    workers.update({f'{worker_name}': f'{worker_host}:{port}'}) #append/update the worker to the master dict
+    workers.update({f'{worker_name}': f'{worker}'}) #append/update the worker to the master dict
     workers_iteration = iterate_workers() #reiterate workers to add any new workers to load
     print(f'{worker_name} registered!') #info statement
     print(f'Current workers: {workers}') #info statement
@@ -59,17 +58,20 @@ def getbylocation(location):
     result_list = {} #init empty dict to store combined results
     error = False #init bool to track if there were any errors, default to False becasue no errors are expected
     for i in range(5): #attempt this five times before erroring out, which allows retries but with a limit
-        worker = round_robin() #call the round_robin function to set workers to the next iteration of the workers_iteration cycle
-        print(f'Sending request to {worker[0]}!') #info statement
         try:
+            worker = round_robin() #call the round_robin function to set workers to the next iteration of the workers_iteration cycle
+            print(f'Sending request to {worker[0]}!') #info statement
             result.update(ServerProxy(f"http://{worker[1]}/").getbylocation(location)) #get results (if any) from rpc call to worker-1, stored in result
             if result.get('error') == False: #if the rpc call succeeds and doesn't return an error (since result is a dict with a key "error" with possible values "True" and False"), do:
                 print(f'Results found in {worker[0]}!') #info statement
                 result_list.update(result.get('result')) #append the result (which is in the form of a dict) to the result_list dict
         except:
-            print(f'There was an issue calling {worker[0]}') #info statement, we're going to stop commenting on these now, they should be understood
-            deregisterworker(worker[0]) #deregister the failed worker
             error = True #set error to True, to be used in logic below
+            if workers:
+                print(f'There was an issue calling {worker[0]}') #info statement, we're going to stop commenting on these now
+                deregisterworker(worker[0]) #deregister the failed worker, IFF there are any workers remaining.  Without this, the except would fail, resulting in an unhandled exception.
+            else:
+                print('There are no available workers!')
         else:
             error = False #if at least one of the five tries is successful, make sure error is set to False
             break #if at least one of the five tries is successful, break the loop and continue
@@ -96,16 +98,19 @@ def getbyname(name):
     result_list = {} #init empty dict to store combined results
     error = False #init bool to track if there were any errors, default to False becasue no errors are expected
     for i in range(5): #attempt this five times before erroring out, which allows retries but with a limit
-        worker = round_robin() #call the round_robin function to set workers to the next iteration of the workers_iteration cycle
-        print(f'Sending request to {worker[0]}!')
         try:
+            worker = round_robin() #call the round_robin function to set workers to the next iteration of the workers_iteration cycle
+            print(f'Sending request to {worker[0]}!')
             result.update(ServerProxy(f"http://{worker[1]}/").getbyname(name)) #get results (if any) from rpc call to worker-1, stored in result
             if result.get('error') == False: #if the rpc call succeeds and doesn't return an error (since result is a dict with a key "error" with possible values "True" and False"), do:
                 result_list.update(result.get('result')) #append the result (which is in the form of a dict) to the result_list dict
         except:
-            print(f'There was an issue calling {worker[0]}!')
-            deregisterworker(worker[0]) #deregister the failed worker
             error = True #set error to True, to be used in logic below
+            if workers:
+                print(f'There was an issue calling {worker[0]}')
+                deregisterworker(worker[0]) #deregister the failed worker, IFF there are any workers remaining.  Without this, the except would fail, resulting in an unhandled exception.
+            else:
+                print('There are no available workers!')
         else:
             error = False #if at least one of the five tries is successful, make sure error is set to False
             break #if at least one of the five tries is successful, break the loop and continue
@@ -133,24 +138,32 @@ def getbyyear(location, year):
         result_list = {} #init empty dict to store combined results
         error = False #init bool to track if there were any errors, default to False becasue no errors are expected
         for i in range(5):
-            worker = round_robin() #call the round_robin function to set workers to the next iteration of the workers_iteration cycle
-            print(f'Sending request to {worker[0]}!')
-            try:    
+            try:   
+                worker = round_robin() #call the round_robin function to set workers to the next iteration of the workers_iteration cycle
+                print(f'Sending request to {worker[0]}!') 
                 result.update(ServerProxy(f"http://{worker[1]}/").getbyyear(location, year)) #get results (if any) from rpc call to worker-1, stored in result
                 if result.get('error') == False: #if the rpc call succeeds and doesn't return an error (since result is a dict with a key "error" with possible values "True" and False"), do:
                     print(f'Results found in {worker[0]}') #info statement
                     result_list.update(result.get('result')) #append the result (which is in the form of a dict) to the result_list dict
             except:
-                print(f'There was an issue calling {worker[0]}!')
-                deregisterworker(worker[0]) #deregister the failed worker
                 error = True #set error to True, to be used in logic below
+                if workers:
+                    print(f'There was an issue calling {worker[0]}')
+                    deregisterworker(worker[0]) #deregister the failed worker, IFF there are any workers remaining.  Without this, the except would fail, resulting in an unhandled exception.
+                else:
+                    print('There are no available workers!')
             else:
                 error = False #if at least one of the five tries is successful, make sure error is set to False
                 break #if at least one of the five tries is successful, break the loop and continue
+    else:
+        return {
+            'error': True,
+            'result': 'Year must be an integer.'
+        }
     if not result_list and error == False: #if the result_list dict is still empty after five tries but there were no errors, then:
         return {
             'error': error,
-            'result': 'No users were found for that location.'
+            'result': 'No users were found for that location during that year.'
         }
     elif error == True: #if it loops five times and error stayed True, then:
         return {
@@ -164,6 +177,9 @@ def getbyyear(location, year):
     }  
 
 def main():
+    if len(sys.argv) < 2:
+        print('Usage: master.py <port>')
+        sys.exit(0)
     port = int(sys.argv[1])
     server = SimpleXMLRPCServer(("localhost", port))
     load_workers() #loading any workers in the event that the master crashes but the workers stayed registered and running, so that workers don't have to re-register
