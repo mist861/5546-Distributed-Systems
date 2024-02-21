@@ -11,18 +11,13 @@ group = 'NaN' #null variable to store group status, this is only needed because 
 
 def load_data(group):
     global data_table
-    if group == 'am': #the only reason we even need the group, since the data files are now the same, is so that all workers can run on the same box and have separate files
-        with open('data-complete-am.json') as data_json_am: #open am json
-            data_table = json.load(data_json_am) #load am json into data_table dict
-    elif group == 'nz':
-        with open('data-complete-nz.json') as data_json_nz: #open nz json
-            data_table = json.load(data_json_nz) #load nz json into data_table dict
+    with open(f'data-complete-{group}.json') as data_json: #open the json with the defined group
+            data_table = json.load(data_json) #load json into data_table dict
     pass
 
 def getbyname(name):
     print(f'Request for getbyname({name}) received.') #info statement
     result_list = {} #initialize empty, local result dict
-    load_data(group) #load the data on call to support future publishing
     for key, value in data_table.items(): #iterate through the JSON dict for keys and values
             if value.get('name') == name: #check each set of values under each main key for the key:value pair of 'name':'input_name'.  Since this is a nested dict, the "values" of the top level keys are also dicts, with their own keys and values.
                 print('Results found!') #info statement
@@ -42,7 +37,6 @@ def getbyname(name):
 def getbylocation(location):
     print(f'Request for getbylocation({location}) received.') #info statement
     result_list = {} #initialize empty, local result dict
-    load_data(group) #load the data on call to support future publishing
     for key, value in data_table.items(): #iterate through the JSON dict for keys, values
             if value.get('location') == location: #check each set of values under each main key for the key:value pair of 'location':'input_location'
                 print('Results found!') #info statement
@@ -62,7 +56,6 @@ def getbylocation(location):
 def getbyyear(location, year):
     print(f'Request for getbyyear({location}, {year}) received.') #info statement
     result_list = {} #initialize empty, local result dict
-    load_data(group) #load the data on call to support future publishing
     for key, value in data_table.items(): #iterate through the JSON dict for keys, values
             if value.get('location') == location and value.get('year') == year: #check each set of values under each main key for the key:value pairs of 'location':'input_location' AND 'year':'input_year'
                 print('Results found!') #info statement
@@ -103,6 +96,11 @@ def main():
     worker = str(sys.argv[2]) #get the worker host:port
     port = int(re.search(r'(?<=:)[0-9]*$', str(sys.argv[2])).group(0)) #parse the worker port with regex and turn the match into an int
     master = str(sys.argv[3]) #get the master:port, for simplicity's sake we're having this be one arg
+    try:
+            load_data(group) #load the data on call to support future publishing
+    except:
+            print('Please provide a valid group for the file data-complete-<group>.json.')
+            exit(0)
     registerworker(worker_name, worker, master) #register the server with the master, using the worker name and port.
     server = SimpleXMLRPCServer(("localhost", port))
 
