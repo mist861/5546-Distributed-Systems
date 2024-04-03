@@ -1,13 +1,13 @@
 import pika, sys, os, mysql.connector, re, random
 from datetime import datetime
 
-credentials = pika.credentials.PlainCredentials('distributed_test', 'd1stP8ss', erase_on_connect=False)
+credentials = pika.credentials.PlainCredentials('distributed_test', '*****', erase_on_connect=False)
 host = '172.26.160.1'
 random.seed()
 failstate = [1,2,3,4,5,6,7,8,9,10]
 
 def insertSQL(table, ID, body, attempt, run):
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_consumer', user='consumer', password='C0nsumerP8ss')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_consumer', user='consumer', password='******')
     mysql_check_query = ("""SELECT COUNT(*) FROM {table_name} WHERE Message_ID = %s""".format(table_name = table))
     mysql_insert_query = ("""INSERT INTO {table_name} (Message_ID, Message_Body, Attempt, Run_ID, Time) VALUES (%s,%s,%s,%s,%s)""".format(table_name = table))
     now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
