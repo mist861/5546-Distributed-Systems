@@ -1,13 +1,13 @@
 import pika, sys, os, mysql.connector, re, random
 from datetime import datetime
 
-credentials = pika.credentials.PlainCredentials('distributed_test', 'd1stP8ss', erase_on_connect=False) # Set the RabbitMQ credentials
+credentials = pika.credentials.PlainCredentials('distributed_test', '*****', erase_on_connect=False) # Set the RabbitMQ credentials
 host = '172.26.160.1' # Set the RabbitMQ host
 random.seed() # Initilize random
 failstate = [1,2,3,4,5,6,7,8,9,10] # Create an array of choices for random to later pull from
 
 def insertSQL(table, ID, body, attempt, run): # Method to insert messages into MySQL
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_consumer', user='consumer', password='C0nsumerP8ss') # Define the MySQL connection
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_consumer', user='consumer', password='******') # Define the MySQL connection
     mysql_check_query = ("""SELECT COUNT(*) FROM {table_name} WHERE Message_ID = %s""".format(table_name = table)) # Define the MySQL check query, which will see if any results exist for a given ID
     mysql_insert_query = ("""INSERT INTO {table_name} (Message_ID, Message_Body, Attempt, Run_ID, Time) VALUES (%s,%s,%s,%s,%s)""".format(table_name = table)) # Define the MySQL insert query
     now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f') # Set the datetime (to be compared with the send datatime)

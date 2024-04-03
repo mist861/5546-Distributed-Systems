@@ -13,13 +13,13 @@ import gc
 from multiprocessing import Process
 
 gc.enable() # We're using garbage collection since there are multiple threads, but honestly I'm not sure it's doing a whole lot
-credentials = pika.credentials.PlainCredentials('distributed_test', 'd1stP8ss', erase_on_connect=False) # Set the RabbitMQ credentials
+credentials = pika.credentials.PlainCredentials('distributed_test', '****', erase_on_connect=False) # Set the RabbitMQ credentials
 host='172.26.160.1' # Set the RabbitMQ host
 random.seed() # Initilize random
 failstate = [1,2,3,4,5,6,7,8,9,10] # Create an array of choices for random to later pull from
 
 def flagRedis(key, value): # Method to set a retry flag in Redis
-    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='Pr0ducerP8ss', decode_responses=True) # Define the Redis connection
+    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='****', decode_responses=True) # Define the Redis connection
     result = redisCon.get(key) # Check if the flag is already set in Redis
     if result == value: # If it is:
         print(f' [W] {key}:{value} is already in Redis')
@@ -30,23 +30,23 @@ def flagRedis(key, value): # Method to set a retry flag in Redis
         return True
 
 def writeRedis(ID, body, attempt, run): # Method to write messages to Redis
-    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='Pr0ducerP8ss')
+    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='*****')
     redisCon.set(f'sent_{ID}_{attempt}_{run}', f'{body}') # Note that all the important metadata bits are stored in the key, separated by _, but with "sent" as the first chunk so that we can find it later
     print(f' [X] Inserted message {ID} into Redis')
     pass
 
 def readRedisKeys(): # Method to read key IDs from Redis, used to check if there is anything to retry
-    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='Pr0ducerP8ss', decode_responses=True)
+    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='****', decode_responses=True)
     keys = list(redisCon.scan_iter('sent_*')) # This iterates all the keys and stores them in the list, if any
     return keys
 
 def readRedis(key): # Method to read full values from Redis with given key
-    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='Pr0ducerP8ss', decode_responses=True)
+    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='*****', decode_responses=True)
     result = redisCon.getdel(key) # Retrieve AND DELETE the value from Redis, so that it's not retried later (until it's put back by sendMQ)
     return result
 
 def readSQLID(table): # Reads the IDs of messages from the given MySQL table, to see if there is anything that needs to be retried
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss') # Define the MySQL connection
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='*****') # Define the MySQL connection
     mysql_check_query = ("""SELECT COUNT(*) FROM {table_name} """.format(table_name = table)) # Define the MySQL check query, so see if there is anything
     mysql_select_query = ("""SELECT Message_ID FROM {table_name} """.format(table_name = table)) # Define the MySQL select query
     
@@ -66,7 +66,7 @@ def readSQLID(table): # Reads the IDs of messages from the given MySQL table, to
     return failed, rowCount # Return the tuple of failed IDs and the number
 
 def readSQL(table, ID): # Method to read full values from the given MySQL table for a given ID.  This is called AFTER readSQLID, so we know by now if there are values or not, so no mysql_check_query
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='****')
     mysql_select_query = ("""SELECT * FROM {table_name} WHERE Message_ID = %s""".format(table_name = table)) # Note the {table_name} and %s: values can be given as parameters, but table names cannot, so the former can be %s passed later while the table name has to be a string variable passed now
     
     cursor = mysql_connection.cursor()
@@ -78,7 +78,7 @@ def readSQL(table, ID): # Method to read full values from the given MySQL table 
     return failed # Return the tuple of the single fetched object
 
 def insertSQL(table, ID, body, attempt, run): # Method to insert a given message into the given MySQL table
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='*****')
     mysql_check_query = ("""SELECT COUNT(*) FROM {table_name} WHERE Message_ID = %s""".format(table_name = table))
     mysql_insert_query = ("""INSERT INTO {table_name} (Message_ID, Message_Body, Attempt, Run_ID, Time) VALUES (%s,%s,%s,%s,%s)""".format(table_name = table)) # Note that this has a lot more %s, order is important
     now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f') # Set the datetime (to compare with the datetime in the message body)
@@ -96,7 +96,7 @@ def insertSQL(table, ID, body, attempt, run): # Method to insert a given message
         mysql_connection.close()
 
 def deleteSQL(table, ID): # Method to remove a message with given ID from a given table (pretty much always "Failed")
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='*****')
     mySql_delete_query = ("""DELETE FROM {table_name} WHERE Message_ID = %s;""".format(table_name = table))
 
     cursor = mysql_connection.cursor()
@@ -108,7 +108,7 @@ def deleteSQL(table, ID): # Method to remove a message with given ID from a give
         mysql_connection.close()
 
 def popRedis(ID): # Method to remove message with a given ID from Redis, unlike readRedis above which reads then deletes
-    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='Pr0ducerP8ss')
+    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='*****')
     for key in redisCon.scan_iter(f'sent_{ID}*'): # First we get the full key name (all keys are stored with _ separating important key bits, INCLUDING ATTEMPT NUMBER)
         redisCon.delete(key) # Then we delete all the found key:value pairs.  Which SHOULD only be 1, but since the keys are stored with things like ATTEMPT NUMBER we're being safe
     pass
