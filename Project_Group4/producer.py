@@ -13,13 +13,13 @@ import gc
 from multiprocessing import Process
 
 gc.enable() # We're using garbage collection since there are multiple threads, but honestly I'm not sure it's doing a whole lot
-credentials = pika.credentials.PlainCredentials('distributed_test', '****', erase_on_connect=False) # Set the RabbitMQ credentials
+credentials = pika.credentials.PlainCredentials('distributed_test', '*****', erase_on_connect=False) # Set the RabbitMQ credentials
 host='172.26.160.1' # Set the RabbitMQ host
 random.seed() # Initilize random
 failstate = [1,2,3,4,5,6,7,8,9,10] # Create an array of choices for random to later pull from
 
 def flagRedis(key, value): # Method to set a retry flag in Redis
-    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='****', decode_responses=True) # Define the Redis connection
+    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='*****', decode_responses=True) # Define the Redis connection
     result = redisCon.get(key) # Check if the flag is already set in Redis
     if result == value: # If it is:
         print(f' [W] {key}:{value} is already in Redis')
@@ -36,13 +36,16 @@ def writeRedis(ID, body, attempt, run): # Method to write messages to Redis
     pass
 
 def readRedisKeys(): # Method to read key IDs from Redis, used to check if there is anything to retry
-    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='****', decode_responses=True)
+    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='*****', decode_responses=True)
     keys = list(redisCon.scan_iter('sent_*')) # This iterates all the keys and stores them in the list, if any
     return keys
 
 def readRedis(key): # Method to read full values from Redis with given key
     redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='*****', decode_responses=True)
-    result = redisCon.getdel(key) # Retrieve AND DELETE the value from Redis, so that it's not retried later (until it's put back by sendMQ)
+    if redisCon.exists(key) > 0: # First make sure the key exists in redis and wasn't removed
+        result = redisCon.getdel(key) # Retrieve AND DELETE the value from Redis, so that it's not retried later (until it's put back by sendMQ)
+    else:
+        result = None
     return result
 
 def readSQLID(table): # Reads the IDs of messages from the given MySQL table, to see if there is anything that needs to be retried
@@ -66,7 +69,7 @@ def readSQLID(table): # Reads the IDs of messages from the given MySQL table, to
     return failed, rowCount # Return the tuple of failed IDs and the number
 
 def readSQL(table, ID): # Method to read full values from the given MySQL table for a given ID.  This is called AFTER readSQLID, so we know by now if there are values or not, so no mysql_check_query
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='****')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss')
     mysql_select_query = ("""SELECT * FROM {table_name} WHERE Message_ID = %s""".format(table_name = table)) # Note the {table_name} and %s: values can be given as parameters, but table names cannot, so the former can be %s passed later while the table name has to be a string variable passed now
     
     cursor = mysql_connection.cursor()
@@ -78,7 +81,7 @@ def readSQL(table, ID): # Method to read full values from the given MySQL table 
     return failed # Return the tuple of the single fetched object
 
 def insertSQL(table, ID, body, attempt, run): # Method to insert a given message into the given MySQL table
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='*****')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss')
     mysql_check_query = ("""SELECT COUNT(*) FROM {table_name} WHERE Message_ID = %s""".format(table_name = table))
     mysql_insert_query = ("""INSERT INTO {table_name} (Message_ID, Message_Body, Attempt, Run_ID, Time) VALUES (%s,%s,%s,%s,%s)""".format(table_name = table)) # Note that this has a lot more %s, order is important
     now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f') # Set the datetime (to compare with the datetime in the message body)
@@ -96,7 +99,7 @@ def insertSQL(table, ID, body, attempt, run): # Method to insert a given message
         mysql_connection.close()
 
 def deleteSQL(table, ID): # Method to remove a message with given ID from a given table (pretty much always "Failed")
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='*****')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss')
     mySql_delete_query = ("""DELETE FROM {table_name} WHERE Message_ID = %s;""".format(table_name = table))
 
     cursor = mysql_connection.cursor()
@@ -108,7 +111,7 @@ def deleteSQL(table, ID): # Method to remove a message with given ID from a give
         mysql_connection.close()
 
 def popRedis(ID): # Method to remove message with a given ID from Redis, unlike readRedis above which reads then deletes
-    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='*****')
+    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='Pr0ducerP8ss')
     for key in redisCon.scan_iter(f'sent_{ID}*'): # First we get the full key name (all keys are stored with _ separating important key bits, INCLUDING ATTEMPT NUMBER)
         redisCon.delete(key) # Then we delete all the found key:value pairs.  Which SHOULD only be 1, but since the keys are stored with things like ATTEMPT NUMBER we're being safe
     pass
@@ -121,17 +124,20 @@ def retryRedis(): # Method to retry messages in Redis (that haven't been ACK'd)
             if any(True for _ in keys): # If there are any keys
                 for key in keys: # For each key
                     result = readRedis(key) # Set result to the retrieved value.  REMEMBER THAT THIS IS A getdel SO IT ALSO REMOVES IT FROM THE CACHE
-                    meta = re.split(r'_', key) # Split the key up by _
-                    ID = meta[1] # Set the second chunk to ID
-                    attempt = int(meta[2]) # Set the third chunk to attempt 
-                    run = int(meta[3]) # Set the fourth chunk to run.  If you're wondering about the first chunk: it's literally "sent".  Which is set below and just used to later retrieve the keys
-                    if (attempt % 3) != 0: # If the LAST attempt is not divisible by 3 (so if it ran 1 time, 2 times, 4 times, etc.)
-                        attempt = attempt + 1 # Increase the attempt by 1 (so if it ran 2 times, this becomes attempt 3)
-                        print(f'Retrying message {ID} for run {run} for attempt {attempt}')
-                        sendMQ(body=result, run=run, ID=ID, attempt=attempt) # Invoke sendMQ below to publish the message to the RabbitMQ service queue
-                    elif(attempt % 3) == 0: # If the LAST attempt is divisible by 3 (so if it failed 3 times, 6 times, 9 times, etc.)
-                        print(f'Message {ID} has been unsuccessfully retried {attempt} times.  Writing to MySQL Failed table.')
-                        insertSQL('Failed', ID, result, attempt, run) # Do not run it, instead move it to the MySQL Failed table
+                    if result != None:
+                        meta = re.split(r'_', key) # Split the key up by _
+                        ID = meta[1] # Set the second chunk to ID
+                        attempt = int(meta[2]) # Set the third chunk to attempt 
+                        run = int(meta[3]) # Set the fourth chunk to run.  If you're wondering about the first chunk: it's literally "sent".  Which is set below and just used to later retrieve the keys
+                        if (attempt % 3) != 0: # If the LAST attempt is not divisible by 3 (so if it ran 1 time, 2 times, 4 times, etc.)
+                            attempt = attempt + 1 # Increase the attempt by 1 (so if it ran 2 times, this becomes attempt 3)
+                            print(f'Retrying message {ID} for run {run} for attempt {attempt}')
+                            sendMQ(body=result, run=run, ID=ID, attempt=attempt) # Invoke sendMQ below to publish the message to the RabbitMQ service queue
+                        elif(attempt % 3) == 0: # If the LAST attempt is divisible by 3 (so if it failed 3 times, 6 times, 9 times, etc.)
+                            print(f'Message {ID} has been unsuccessfully retried {attempt} times.  Writing to MySQL Failed table.')
+                            insertSQL('Failed', ID, result, attempt, run) # Do not run it, instead move it to the MySQL Failed table
+                    elif result == None: # If the key was removed mid-retry (by an ACK), then:
+                        print(f'Message with ID {key} already removed from Redis')
             else: # If there are no keys to retry:
                 print('No messages to retry in Redis!')
             flagRedis('retry', 'False') # Once it's all done, set the retry flag back to False
@@ -151,11 +157,14 @@ def retryFailed(): # Like the above, but for MySQL
                     key = key[0] # Pull the actual message ID
                     print(f'Retrying message {key} from MySQL Failed table')
                     result = readSQL('Failed', key) # Retrieve the full message in the Failed table with that Message ID
-                    body = result[1] # Set the body to the second chunk
-                    attempt = (result[2] + 1) # Set the attempt to the third chunk and increment by 1
-                    run = result[3] # Set the run ID to the fourth chunk.  If you're wondering about the first chunk: it's the message ID!  Which we already have in key!
-                    sendMQ(body=body, ID=key, attempt = attempt, run=run) # Invoke sendMQ to publish the failed message to the RabbitMQ service queue
-                    deleteSQL('Failed', key) # REMOVE THE MESSAGE FROM THE Failed TABLE
+                    if len(result) > 1: # If the key is still in SQL and pulls real results
+                        body = result[1] # Set the body to the second chunk
+                        attempt = (result[2] + 1) # Set the attempt to the third chunk and increment by 1
+                        run = result[3] # Set the run ID to the fourth chunk.  If you're wondering about the first chunk: it's the message ID!  Which we already have in key!
+                        sendMQ(body=body, ID=key, attempt = attempt, run=run) # Invoke sendMQ to publish the failed message to the RabbitMQ service queue
+                        deleteSQL('Failed', key) # REMOVE THE MESSAGE FROM THE Failed TABLE
+                    else: # If the key was removed from the Failed table mid-retry (like by an ACK), then:
+                        print(f'Message with ID {key} already removed from the SQL Failed table')
             elif not keys: # If no keys are found:
                 print('No messages to retry in MySQL!')
             flagRedis('retry', 'False') # Once it's all done, set the retry flag back to False
@@ -229,9 +238,17 @@ def main():
         mqProcess.start() # Start the process
         processes.append(mqProcess) # Add the process to the process array, for tracking.  ...Which we're not really using here, but would be quite nice for error handling.
     retryThread = threading.Thread(target=retryRedis, args=()) # Define a thread to run retryRedis
-    retryThread.start() # Start the retryRedis thread
+    try:
+        retryThread.start() # Start the retryRedis thread
+    except:
+        print('Redis retry thread failed')
+        exit(1)
     failedThread = threading.Thread(target=retryFailed, args=()) # Define a thread to run retryFailed
-    failedThread.start() # Start the retryFailed thread.  Note that in Python, all "threads" are single-threaded with main.  So they can drown each other out.  That's fine for the retries and initial sends, but less fine for receiveMQ's ACKs, so that method gets to be multiprocessed
+    try:
+        failedThread.start() # Start the retryFailed thread.  Note that in Python, all "threads" are single-threaded with main.  So they can drown each other out.  That's fine for the retries and initial sends, but less fine for receiveMQ's ACKs, so that method gets to be multiprocessed
+    except:
+        print('MySQL retry thread failed')
+        exit(1)
     server.serve_forever() # Start serving sendMQ via RPC
 
 
