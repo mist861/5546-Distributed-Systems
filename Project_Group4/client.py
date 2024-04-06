@@ -2,7 +2,7 @@ import xmlrpc.client
 import sys
 from datetime import datetime
 
-producer_host = int(sys.argv[1]) # Set the producer's host
+producer_host = sys.argv[1] # Set the producer's host
 producer_port = int(sys.argv[2]) # Set the producer's port
 iterations = (int(sys.argv[3]) + 1) # Set the number of messages to send.  Since arrays start at 0, we add 1
 run = int(sys.argv[4]) # Set an ID to track the current run
