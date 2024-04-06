@@ -69,7 +69,7 @@ def readSQLID(table): # Reads the IDs of messages from the given MySQL table, to
     return failed, rowCount # Return the tuple of failed IDs and the number
 
 def readSQL(table, ID): # Method to read full values from the given MySQL table for a given ID.  This is called AFTER readSQLID, so we know by now if there are values or not, so no mysql_check_query
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='*****')
     mysql_select_query = ("""SELECT * FROM {table_name} WHERE Message_ID = %s""".format(table_name = table)) # Note the {table_name} and %s: values can be given as parameters, but table names cannot, so the former can be %s passed later while the table name has to be a string variable passed now
     
     cursor = mysql_connection.cursor()
@@ -81,7 +81,7 @@ def readSQL(table, ID): # Method to read full values from the given MySQL table 
     return failed # Return the tuple of the single fetched object
 
 def insertSQL(table, ID, body, attempt, run): # Method to insert a given message into the given MySQL table
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='*****')
     mysql_check_query = ("""SELECT COUNT(*) FROM {table_name} WHERE Message_ID = %s""".format(table_name = table))
     mysql_insert_query = ("""INSERT INTO {table_name} (Message_ID, Message_Body, Attempt, Run_ID, Time) VALUES (%s,%s,%s,%s,%s)""".format(table_name = table)) # Note that this has a lot more %s, order is important
     now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f') # Set the datetime (to compare with the datetime in the message body)
@@ -99,7 +99,7 @@ def insertSQL(table, ID, body, attempt, run): # Method to insert a given message
         mysql_connection.close()
 
 def deleteSQL(table, ID): # Method to remove a message with given ID from a given table (pretty much always "Failed")
-    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='Pr0ducerP8ss')
+    mysql_connection = mysql.connector.connect(host='172.26.160.1', database='distributed_producer', user='producer', password='******')
     mySql_delete_query = ("""DELETE FROM {table_name} WHERE Message_ID = %s;""".format(table_name = table))
 
     cursor = mysql_connection.cursor()
@@ -111,7 +111,7 @@ def deleteSQL(table, ID): # Method to remove a message with given ID from a give
         mysql_connection.close()
 
 def popRedis(ID): # Method to remove message with a given ID from Redis, unlike readRedis above which reads then deletes
-    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='Pr0ducerP8ss')
+    redisCon = redis.Redis(host='172.26.160.1', port='6379', username='producer', password='*******')
     for key in redisCon.scan_iter(f'sent_{ID}*'): # First we get the full key name (all keys are stored with _ separating important key bits, INCLUDING ATTEMPT NUMBER)
         redisCon.delete(key) # Then we delete all the found key:value pairs.  Which SHOULD only be 1, but since the keys are stored with things like ATTEMPT NUMBER we're being safe
     pass
