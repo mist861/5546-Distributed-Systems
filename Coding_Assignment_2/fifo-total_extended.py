@@ -67,19 +67,20 @@ class Host(Node):
             mcast = Message(message_id, self, to, message_type, self.send_id, self.proposed_id, payload)
             self.send_message(to, mcast)
 
-    def ackdeliver(self): # Method to confirm that all messages have received all the acks and finally deliver
+    def ackdeliver(self): # Method to confirm that all messages have received all the acks and finally deliver, we have this because it's possible for sequence number ties to happen
         tempresults = [] # Set an array to store message IDs
         for id in self.to_queue: # For everything in the holdback queue
             if self.to_queue[f'{id}']['agree'] == (self.agree_id + 1): # If any messages have an agreed ID == the current agreed ID + 1 (because, if multiple messages are multicast at the exact same time, this can happen)
                 tempresults.append(id) # Add them to the ID array
         if all((len(self.to_ack_queue[f'{id}']['ack']) == len(self.gmembers)) for id in tempresults): # If ALL messages with an agreed ID of the current, self agreed + 1 have received ALL of the ACKs from all processes
-            for id in sorted(tempresults): # For each ID
-                print(f'{self} is delivering message {id} with an agreement of {self.agree_id}')
+            for id in sorted(tempresults): # For each ID, sorted because we could have ties and this breaks the ties
+                agreed_value = self.to_queue[f'{id}']['agree']
+                print(f'{self} is delivering message {id} with an agreement of {agreed_value} and last agreed of {self.agree_id}')
                 if id in self.to_request_queue: # If the ID is in the request queue (as in, this was the process that sent the original multicast)
                     self.nextorder(id) # Check to see if any other message orders can be sent with the nextorder method
                 self.deliver_message(self.to_queue[f'{id}']['time'], self.to_queue[f'{id}']['message']) # Deliver the message
                 self.to_queue.pop(f'{id}') # Remove them from the holdback queue
-                self.agree_id = self.agree_id + 1 # Increase the last agreed ID
+            self.agree_id = self.agree_id + 1 # Increase the last agreed ID
                 
     def requestorder(self, message_id, time): # Method for senders to determine the request order
         proposed = self.to_request_queue[f'{message_id}']['proposed'] # Define an array to hold all the proposed values in the request queue
@@ -96,7 +97,7 @@ class Host(Node):
                     badagree = False # Set the retry flag to false
                 if not badagree: # If the retry flag is False
                     proposed.sort() # Sort the values in the propose array
-                    self.proposed_id = proposed[len(self.gmembers) - 1] # Take the last value in the array, the largest (yes this is a lazy way of doing this), and set it to be the sender's proposed ID
+                    self.proposed_id = proposed[len(self.gmembers) - 1] # Take the last value in the array, the largest (yes this is a lazy way of doing this), and set it to be the sender's proposed ID. We're using self.proposed_id here for simplicity (it's what the multicast methods want) and because self.proposed_id gets updated on receive_message() anyways.
                     if self.proposed_id > self.agree_id: # If the proposed ID is greater than the last agreed ID
                         for id in self.to_queue: # For everything in the holdback queue
                             if self.to_queue[f'{id}']['agree'] == self.proposed_id: # If any message has an agreement that matches the current proposed ID
@@ -137,17 +138,8 @@ class Host(Node):
             time = self.to_queue[f'{next_id}']['time'] # Since this method is invoked by the delivery of the previous method (and not via a message receive), pull the message's time from the holdback queue (because the request queue is just the message ID and proposed values).  This COULD break if the sender hasn't received it's own message yet
             proposed = self.to_request_queue[f'{next_id}']['proposed'] # Pull the array of proposed values from the request queue for that ID
             if len(proposed) == len(self.gmembers): # If all of the processes have proposed a value
-#                if self.to_request_queue[f'{next_id}']['sequence'] == self.send_sequence + 1: # And if the 
-#                    for id in self.to_request_queue:
-#                        if self.to_request_queue[f'{id}']['sequence'] == self.send_sequence:
-#                            previous_id = id
-#                    if previous_id == None:
-#                        badagree = False
-#                    elif len(self.to_ack_queue[f'{previous_id}']['ack']) == len(self.gmembers):
-#                        badagree = False
-#                if not badagree:
                 proposed.sort() # Sort the array of proposals
-                self.proposed_id = proposed[len(self.gmembers) - 1] # Set the current proposed ID to the last, largest value (again, this is lazy way of doing this)
+                proposed_id = proposed[len(self.gmembers) - 1] # Set the current proposed ID to the last, largest value (again, this is lazy way of doing this)
                 if self.proposed_id > self.agree_id: # If the proposed ID is greater than the last agreed ID
                     for id in self.to_queue: # For all IDs in the holdback queue
                         if self.to_queue[f'{id}']['agree'] == self.proposed_id: # If their agreed IDs match the current proposed ID:
@@ -186,7 +178,7 @@ class Host(Node):
             self.to_queue.update({f'{message.message_id}':{'from': f'{frm}', 'message': message, 'time': time, 'proposed': self.proposed_id, 'agree': self.agree_id}}) # Add the new message to the to_order (holdback) "queue"
             if message.message_id not in self.to_ack_queue: # If it's a new message and not in the separate ACK "queue" (it hasn't gotten any ACKs from anyone else, this is separate from the above because an ACK could be received before the message itself):
                 self.to_ack_queue.update({f'{message.message_id}':{'ack':[]}})  # Create a new record in the ACK queue to track the message
-            print(f'{self} is sending totalorder request to {frm} for {message.message_id} with proposed ID of {self.proposed_id}')
+            print(f'{self} is sending totalorder request to {frm} for {message.message_id} with proposed ID of {message.message_id}')
             to_request = Message(message.message_id, self, frm, 'REQUEST_TO', message.send_id, self.proposed_id, payload=None) # Create a new request to send back to te sender of type REQUEST_TO
             self.send_message(frm, to_request) # Send the message back, asking for the order
         elif (type == 'ORDER_TO'): # If the message has a type of ORDER_TO, which tells the processes the order to deliver a mesasge
