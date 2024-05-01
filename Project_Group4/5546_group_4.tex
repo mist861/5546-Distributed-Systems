@@ -1,0 +1,107 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Welcome to Overleaf --- just edit your LaTeX on the left,
+% and we'll compile it for you on the right. If you open the
+% 'Share' menu, you can invite other users to edit at the same
+% time. See www.overleaf.com/learn for more info. Enjoy!
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[12pt]{article}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\begin{document}
+\begin{algorithm}
+\caption{Producer}\label{alg:cap}
+\begin{algorithmic}
+\Function {sendMQ}{$m$}
+\If{$m.attempt$ does not exist}
+\State $m.attempt \gets 1$
+\EndIf
+\If{$m.ID$ does not exist}
+\State $m.ID \gets UUID$
+\EndIf
+\State Write $m$ to Redis cache
+\If{$m.attempt$ = 1}
+\State Write $m$ to MySQL Sent table
+\EndIf
+\State Publish $m$ to RabbitMQ
+\EndFunction\\
+\Function {receiveMQ}{$m$}
+\While{True}
+\For{each $m$ received}
+\If{$m.ID$ is in Redis cache}
+\State Remove $m$ from Redis cache
+\EndIf
+\If{$m.ID$ is in MySQL Failed table}
+\State Remove $m$ from MySQL Failed table
+\EndIf
+\EndFor
+\EndWhile
+\EndFunction\\
+\end{algorithmic}
+\end{algorithm}
+\begin{algorithm}
+\begin{algorithmic}
+\Function {retryRedis}{$m$}
+\While{True}
+\For{each $m$ in Redis cache}
+\If{$m.attempt$ = 3}
+\State Write $m$ to MySQL Failed table
+\State Remove $m$ from Redis cache
+\Else
+\State $m.attempt \gets m.attempt + 1$
+\State sendMQ(m)
+\State Remove $m$ from Redis cache
+\EndIf
+\State Sleep(60s)
+\EndFor
+\EndWhile
+\EndFunction\\
+\Function {retryFailed}{$m$}
+\While{True}
+\For{each $m$ in MySQL Failed table}
+\State $m.attempt \gets m.attempt + 1$
+\State sendMQ(m)
+\State Remove $m$ from MySQL Failed table
+\State Sleep(175s)
+\EndFor
+\EndWhile
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Consumer}\label{alg:cap}
+\begin{algorithmic}
+\Function {receiveMQ}{$m$}
+\While{True}
+\For{each $m$ received}
+\If{$m.ID$ is not in MySQL Received table}
+\State Write $m$ to MySQL Received table
+\EndIf
+\State sendACK($m$)
+\EndFor
+\EndWhile
+\EndFunction\\
+\Function {sendACK}{$m$}
+\State Publish $m.ID$ to RabbitMQ
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Client}\label{alg:cap}
+\begin{algorithmic}
+\Require $producer$
+\Require $run\_id$
+\Require $message\_count$
+\For{$i$ in range $(1,message\_count$}
+\State $m \gets Null$
+\State $m.body \gets "Iteration\ i\ at\ time"$
+\State $m.run\_id \gets run\_id$
+\State $producer$.sendMQ($m$)
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}
